@@ -4,7 +4,7 @@ import { program } from "commander";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import * as YAML from "yaml";
-import { loadConfig, createConfig } from "./config";
+import { loadConfig, createConfig, updateConfigValue } from "./config";
 import { Actual } from "./actual";
 import { Truelayer } from "./truelayer";
 import { Sync } from "./sync";

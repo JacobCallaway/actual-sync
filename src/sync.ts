@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { Actual, ActualTransaction } from "./actual";
-import { AppConfig } from "./config";
+import { AppConfig, updateConfigValue } from "./config";
 import { Truelayer, TruelayerTransaction } from "./truelayer";
 import * as YAML from "yaml";
 import { Ntfy } from "./ntfy";
@@ -38,6 +38,20 @@ export const Sync = (config: AppConfig) => {
 
   const sync = async () => {
     const actual = Actual(config.actual);
+    
+    // Setup callback for token updates
+    config.truelayer._updateRefreshToken = async (accountId: string, newToken: string) => {
+      await updateConfigValue((cfg) => ({
+        ...cfg,
+        truelayer: {
+          ...cfg.truelayer,
+          accounts: cfg.truelayer.accounts.map((acc) =>
+            acc.id === accountId ? { ...acc, refreshToken: newToken } : acc
+          ),
+        },
+      }));
+    };
+    
     const truelayer = Truelayer(config.truelayer);
     const actualAccounts = await actual.listAccounts();
     const truelayerAccounts = truelayer.listAccounts();

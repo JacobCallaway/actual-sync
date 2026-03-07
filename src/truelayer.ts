@@ -3,6 +3,7 @@ export type TruelayerConfig = {
   clientSecret: string;
   redirectUri: string;
   accounts: TruelayerBankAccount[];
+  _updateRefreshToken?: (accountId: string, newToken: string) => Promise<void>;
 };
 
 export type TruelayerBankAccount = {
@@ -67,14 +68,24 @@ export const Truelayer = (config: TruelayerConfig) => {
 
   const truelayerApi = async <T>(
     path: string,
-    opts: { refreshToken: string } | { accessToken: string },
+    opts: { refreshToken: string; accountId?: string } | { accessToken: string },
   ): Promise<TruelayerResponse<T> | null> => {
     let accessToken = "";
-    if ("accessToken" in opts) accessToken = opts.accessToken;
-    else {
-      const creds = await refreshToken(opts.refreshToken);
+    let accountId: string | undefined;
+    
+    if ("accessToken" in opts) {
+      accessToken = opts.accessToken;
+    } else {
+      accountId = opts.accountId;
+      const creds = await refreshToken(opts.refreshToken, opts.accountId);
       accessToken = creds.accessToken;
+      
+      // Persist new refresh token if it changed
+      if (creds.refreshToken !== opts.refreshToken && config._updateRefreshToken && accountId) {
+        await config._updateRefreshToken(accountId, creds.refreshToken);
+      }
     }
+    
     const resp = await fetch(new URL(path, BASE_URL_API), {
       headers: {
         "Content-Type": "application/json",
@@ -116,7 +127,7 @@ export const Truelayer = (config: TruelayerConfig) => {
       account.type === "CARD"
         ? `/data/v1/cards/${account.id}/transactions`
         : `/data/v1/accounts/${account.id}/transactions`,
-      account,
+      { refreshToken: account.refreshToken, accountId: account.id },
     ).then((res) => res?.results ?? []);
   };
 
@@ -125,7 +136,7 @@ export const Truelayer = (config: TruelayerConfig) => {
       account.type === "CARD"
         ? `/data/v1/cards/${account.id}/balance`
         : `/data/v1/accounts/${account.id}/balance`,
-      account,
+      { refreshToken: account.refreshToken, accountId: account.id },
     );
     if (!data || data.results.length !== 1)
       throw Error("Only one budget per account expected");
@@ -177,7 +188,7 @@ const TruelayerAuth = (config: TruelayerConfig) => {
       refreshToken: data.refresh_token,
     };
   };
-  const refreshToken = async (refreshToken: string) => {
+  const refreshToken = async (refreshToken: string, accountId?: string) => {
     const resp = await fetch(new URL("/connect/token", BASE_URL_AUTH), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
