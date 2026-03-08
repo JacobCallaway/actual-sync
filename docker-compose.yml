@@ -1,0 +1,93 @@
+version: '3.9'
+
+services:
+  actual-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: actual-sync
+    
+    # Environment variables
+    environment:
+      # Encryption key for credentials (use strong key, min 32 chars)
+      ACTUAL_SYNC_ENCRYPTION_KEY: ${ACTUAL_SYNC_ENCRYPTION_KEY}
+      
+      # Optional: custom config file location (default: .config.yml)
+      CONFIG_FILE_PATH: ${CONFIG_FILE_PATH:-.config.yml}
+      
+      # Optional: disable encryption (NOT RECOMMENDED - debug only)
+      # ACTUAL_SYNC_DISABLE_ENCRYPTION: "false"
+      
+      # Timezone
+      TZ: ${TZ:-UTC}
+    
+    # Volume mounts
+    volumes:
+      # Config file persistence (encrypted with credentials)
+      - ./config:/app/config:rw
+      
+      # Optional: cache directory for Actual Budget API
+      - ./cache:/app/.cache:rw
+      
+      # Optional: logs
+      - ./logs:/app/logs:rw
+    
+    # Security
+    security_opt:
+      # Drop unnecessary capabilities
+      - no-new-privileges:true
+    read_only_root_filesystem: false
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Override default entrypoint for manual runs
+    # (Remove this line to use automated schedule with cron container below)
+    entrypoint: /bin/sh
+    command: -c "trap : TERM INT; sleep infinity & wait"
+    
+    networks:
+      - default
+
+  # Optional: Scheduler service using cron
+  actual-sync-scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: actual-sync-scheduler
+    depends_on:
+      - actual-sync
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      # Run sync every 6 hours at 0, 6, 12, 18 UTC
+      - "daemon"
+      - "--docker"
+    labels:
+      ofelia.enabled: "true"
+      # Cron format: minute hour day month day-of-week
+      # Run at 12:00 AM, 6:00 AM, 12:00 PM, 6:00 PM UTC
+      ofelia.job-exec.actual-sync-sync.schedule: "@every 6h"
+      ofelia.job-exec.actual-sync-sync.container: "actual-sync"
+      ofelia.job-exec.actual-sync-sync.command: "./actual-sync sync"
+    restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  default:
+    name: actual-sync-network
+    driver: bridge
+
+volumes:
+  config:
+  cache:
+  logs:

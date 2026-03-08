@@ -1,0 +1,30 @@
+# Simple Docker Compose - Without Automatic Scheduler
+# Use this if you want to run sync manually or schedule via host cron
+# For automatic scheduling, use the main docker-compose.yml
+
+version: '3.9'
+
+services:
+  actual-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: actual-sync
+    
+    environment:
+      ACTUAL_SYNC_ENCRYPTION_KEY: ${ACTUAL_SYNC_ENCRYPTION_KEY}
+      CONFIG_FILE_PATH: ${CONFIG_FILE_PATH:-.config.yml}
+      TZ: ${TZ:-UTC}
+    
+    volumes:
+      - ./config:/app/config:rw
+      - ./cache:/app/.cache:rw
+    
+    security_opt:
+      - no-new-privileges:true
+    
+    restart: unless-stopped
+    
+    # Override to keep container running for manual execution
+    entrypoint: /bin/sh
+    command: -c "trap : TERM INT; sleep infinity & wait"
